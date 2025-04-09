@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -8,13 +8,34 @@ import Link from "next/link";
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, isLoading } = useAuth();
+  const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Set a timeout to avoid flash of loading state on fast connections
+    const timer = setTimeout(() => {
+      setPageLoading(false);
+    }, 800);
+    
+    // Only redirect if not authenticated AND we're done loading
+    if (!isAuthenticated && !isLoading) {
+      console.log('Not authenticated and done loading, redirecting to login');
       router.push("/login");
     }
-  }, [isAuthenticated, router]);
+    
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, isLoading, router]);
+
+  if (isLoading || pageLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return null;

@@ -9,24 +9,22 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.Date;
 import java.util.List;
 
-@Document(collection = "messages")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Document(collection = "messages")
 public class Message {
     @Id
     private String id;
     private String conversationId;
     private String senderId;
     private String content;
-    private List<Attachment> attachments;
-    private List<String> readBy;
-    private List<String> deliveredTo;
-    private boolean isEdited;
-    private boolean isDeleted;
+    private List<String> attachments;
+    private boolean read;
     private Date createdAt;
     private Date updatedAt;
 }
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

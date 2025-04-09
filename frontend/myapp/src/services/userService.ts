@@ -15,21 +15,26 @@ export const userService = {
   // Get users with search (GET /api/users)
   getUsers: async (params: SearchParams, token: string) => {
     const queryParams = new URLSearchParams();
-    if (params.search) queryParams.append('search', params.search);
+    if (params.search) queryParams.append('search', params.search.trim());
 
-    const response = await fetch(`${API_URL}/users${queryParams.toString() ? `?${queryParams.toString()}` : ''}`, {
-      headers: {
-        Authorization: `Bearer ${token}`
+    try {
+      const response = await fetch(`${API_URL}/users${queryParams.toString() ? `?${queryParams.toString()}` : ''}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch users');
       }
-    });
-    
-    console.log(response);
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch users');
+  
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      throw error;
     }
-
-    return response.json();
   },
 
   // Get user by ID (GET /api/users/{id})

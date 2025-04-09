@@ -1,0 +1,115 @@
+.conversation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background-color: #fff;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.conversation-info {
+  display: flex;
+  align-items: center;
+}
+
+.group-avatar,
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-right: 15px;
+}
+
+.group-avatar {
+  background-color: #9c27b0;
+  color: white;
+}
+
+.user-avatar {
+  background-color: #3498db;
+  color: white;
+  position: relative;
+}
+
+.user-avatar.online::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #4caf50;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.conversation-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-name {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.conversation-status {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.conversation-actions {
+  position: relative;
+}
+
+.settings-button {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.settings-icon {
+  font-size: 20px;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  width: 180px;
+  z-index: 10;
+}
+
+.settings-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 15px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.settings-option:hover {
+  background-color: #f5f5f5;
+}
+
+.settings-option:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.settings-option:last-child {
+  border-radius: 0 0 8px 8px;
+} 

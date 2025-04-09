@@ -32,7 +32,11 @@ public class SecurityConfiguration {
         http
                 .csrf(AbstractHttpConfigurer::disable)  // Correct way to disable CSRF protection
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()  // Update requestMatchers for public URLs
+                        .requestMatchers("/api/auth/**").permitAll()  // Auth endpoints are public
+                        .requestMatchers("/ws/**").permitAll()  // WebSocket endpoints are public
+                        .requestMatchers("/ws/connect/**").permitAll()
+                        .requestMatchers("/ws/connect").permitAll()
+                        .requestMatchers("/api/notifications/count").permitAll()  // Allow notification count without auth
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session

@@ -68,9 +68,11 @@ export default function UsersPage() {
       
       // Ensure we handle both formats (array directly or wrapped in content property)
       const userData = Array.isArray(response) ? response : (response.content || []);
+      
       setUsers(userData);
     } catch (error) {
       console.error("Failed to fetch users:", error);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -78,6 +80,9 @@ export default function UsersPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    // Sanitize search query - remove special characters
+    const sanitizedQuery = searchQuery.replace(/[^\w\s@.-]/gi, '');
+    setSearchQuery(sanitizedQuery);
     fetchUsers();
   };
 
@@ -99,9 +104,6 @@ export default function UsersPage() {
   if (!isAuthenticated) {
     return null;
   }
-
-  console.log(users);
-  console.log(filteredUsers);
 
   return (
     <div className="min-h-screen bg-background p-6">

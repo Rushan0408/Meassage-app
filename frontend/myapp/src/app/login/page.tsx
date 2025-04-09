@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    // If user is already authenticated, redirect to home page
+    if (isAuthenticated && !isLoading) {
+      router.push("/");
+    }
+  }, [isAuthenticated, isLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,25 +41,40 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        const errorText = await response.text();
+        console.error("Login failed:", response.status, errorText);
+        throw new Error(`Login failed: ${response.status}`);
       }
 
       const data = await response.json();
       console.log("Login response:", data);
       
-      // Check for token in the response
-      // Backend returns "token : " (with a space)
-      const token = data["token : "] || data.token;
+      // Find token in the response, try all possible keys and formats
+      let token = null;
       
-      if (!token) {
-        throw new Error("No token received from server");
+      // Try standard keys first
+      if (data.token || data["token : "] || data["token "]) {
+        token = data.token || data["token : "] || data["token "];
+      } else {
+        // If not found, look for any property that looks like a token
+        for (const key in data) {
+          if (typeof data[key] === 'string' && data[key].length > 20) {
+            token = data[key];
+            break;
+          }
+        }
       }
       
-      // Use the login function from AuthContext
-      login(token);
-      
-      // Redirect to home page
-      router.push("/");
+      if (token) {
+        console.log('Login successful, proceeding with token:', token);
+        // Use the login function from AuthContext
+        login(token);
+        
+        // Remove the delay and just redirect
+        router.push("/");
+      } else {
+        throw new Error("No token received from server");
+      }
     } catch (err) {
       setError("Invalid email or password");
       console.error(err);

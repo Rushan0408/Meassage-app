@@ -1,0 +1,141 @@
+.message-item {
+  display: flex;
+  margin-bottom: 15px;
+  position: relative;
+}
+
+.message-item.current-user {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #3498db;
+  color: white;
+  font-weight: bold;
+  margin-right: 10px;
+}
+
+.message-content-wrapper {
+  max-width: 70%;
+}
+
+.message-sender {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 3px;
+}
+
+.message-bubble {
+  background-color: #f2f2f7;
+  border-radius: 18px;
+  padding: 10px 15px;
+  position: relative;
+}
+
+.message-item.current-user .message-bubble {
+  background-color: #e1f5fe;
+}
+
+.message-content {
+  font-size: 15px;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.message-edit-input {
+  width: 100%;
+  min-height: 60px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 15px;
+  resize: vertical;
+}
+
+.message-attachments {
+  margin-top: 8px;
+}
+
+.message-attachment {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 5px 10px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+
+.message-time {
+  font-size: 11px;
+  color: #888;
+  margin-top: 5px;
+  text-align: right;
+}
+
+.message-edited {
+  margin-left: 5px;
+  font-style: italic;
+}
+
+.message-options {
+  position: absolute;
+  top: -25px;
+  right: 10px;
+  display: flex;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  padding: 3px;
+}
+
+.message-item.current-user .message-options {
+  left: 10px;
+  right: auto;
+}
+
+.message-option-btn {
+  background: none;
+  border: none;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.message-option-btn.edit {
+  color: #3498db;
+}
+
+.message-option-btn.delete {
+  color: #e74c3c;
+}
+
+.message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.message-edit-btn {
+  border: none;
+  padding: 5px 10px;
+  margin-left: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.message-edit-btn.cancel {
+  background-color: #f2f2f2;
+}
+
+.message-edit-btn.save {
+  background-color: #3498db;
+  color: white;
+} 

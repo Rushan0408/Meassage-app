@@ -23,6 +23,7 @@ type AuthContextType = {
   isAuthenticated: boolean;
   refreshToken: () => Promise<boolean>;
   fetchUserData: (token: string) => Promise<void>;
+  isLoading: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,19 +56,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = async (token: string) => {
     try {
+      console.log('Fetching user data with token:', token);
       const response = await fetch("http://localhost:8080/api/auth/me", {
+        method: 'GET',
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        mode: 'cors'
       });
+      
+      console.log('User data response status:', response.status);
       
       if (response.ok) {
         const userData = await response.json();
+        console.log('User data received:', userData);
         setUser(userData);
       } else {
         // If token is invalid, try refreshing it
+        console.error('Failed to fetch user data:', response.status, response.statusText);
         const refreshed = await refreshToken();
         if (!refreshed) {
+          console.error('Token refresh failed');
           // If refresh fails, log the user out
           logout();
         }
@@ -87,14 +99,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch("http://localhost:8080/api/auth/refresh", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        mode: 'cors'
       });
       
       if (response.ok) {
         const data = await response.json();
-        // Check if the response has a token property
-        const newToken = data.token || data["token : "] || data["token"];
+        
+        // Find token in the response, try all possible keys and formats
+        let newToken = null;
+        
+        // Try standard keys first
+        if (data.token || data["token : "] || data["token "]) {
+          newToken = data.token || data["token : "] || data["token "];
+        } else {
+          // If not found, look for any property that looks like a token
+          for (const key in data) {
+            if (typeof data[key] === 'string' && data[key].length > 20) {
+              newToken = data[key];
+              break;
+            }
+          }
+        }
         
         if (newToken) {
           localStorage.setItem("token", newToken);
@@ -133,7 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       isAuthenticated: !!token,
       refreshToken,
-      fetchUserData
+      fetchUserData,
+      isLoading
     }}>
       {children}
     </AuthContext.Provider>
