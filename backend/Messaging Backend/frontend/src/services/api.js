@@ -218,98 +218,131 @@ const activeRequests = {};
 const requestQueue = {};
 const messageCache = {}; // Simple cache for messages
 
-// Cache expiration timeout (2 minutes, reduced from 5)
-const CACHE_EXPIRATION = 2 * 60 * 1000;
+// Cache configuration
+const messageCacheExpiry = {
+  direct: 60 * 1000,    // 60 seconds for direct messages
+  group: 30 * 1000      // 30 seconds for group chats - refresh more often
+};
 
-export const getMessages = (conversationId, page = 0, size = 20, before = null) => {
-  // Check cache first for initial loads (page 0)
-  const cacheKey = `${conversationId}_${page}_${before || 'latest'}`;
-  if (page === 0 && messageCache[cacheKey] && (Date.now() - messageCache[cacheKey].timestamp < CACHE_EXPIRATION)) {
-    // For page 0, still make the request in the background to update the cache
-    // but return cached data immediately for better responsiveness
+// Message fetch limits
+const messagePageSizes = {
+  direct: 50,           // Standard 50 messages for direct chats
+  group: 40             // Fewer messages for group chats to improve load time
+};
+
+/**
+ * Get messages for a conversation with caching and background refresh
+ */
+export const getMessages = async (conversationId, { page = 0, size = 50, before = null, forceRefresh = false } = {}) => {
+  // Validate inputs
+  if (!conversationId) {
+    throw new Error('conversationId is required for getMessages');
+  }
+
+  // Determine if this is a group chat
+  const isGroupChat = typeof conversationId === 'string' && conversationId.startsWith('group_');
+  const chatType = isGroupChat ? 'group' : 'direct';
+  
+  // Adjust fetch parameters based on chat type
+  const cacheExpiryTime = messageCacheExpiry[chatType];
+  const batchSize = Math.min(size, messagePageSizes[chatType]);
+  const timeoutMs = isGroupChat ? 10000 : 15000; // 10s for group, 15s for direct
+  
+  // Create a cache key
+  const cacheKey = `messages_${conversationId}_${page}_${batchSize}_${before || ''}`;
+  
+  // Check if we already have a request in progress for this exact data
+  if (activeRequests[cacheKey]) {
+    console.debug(`Reusing in-flight request for ${cacheKey}`);
+    try {
+      const response = await activeRequests[cacheKey];
+      return response;
+    } catch (error) {
+      // If in-flight request fails, continue to try a new one
+      console.warn(`In-flight request for ${cacheKey} failed, will try again`);
+    }
+  }
+  
+  // Check cache for a valid response
+  const cachedResponse = messageCache[cacheKey];
+  const now = Date.now();
+  const cacheAge = cachedResponse ? now - cachedResponse.timestamp : Infinity;
+  const isCacheFresh = cacheAge < cacheExpiryTime;
+  
+  // Use cache if it's fresh and we're not forcing a refresh
+  if (cachedResponse && isCacheFresh && !forceRefresh) {
+    console.debug(`Using fresh cache for ${cacheKey} (${Math.round(cacheAge / 1000)}s old)`);
+    
+    // If the cache is getting stale (over half its lifetime), refresh in background
+    if (cacheAge > cacheExpiryTime / 2) {
+      setTimeout(() => {
+        _refreshMessageCache(conversationId, page, batchSize, before, cacheKey);
+      }, 50);
+    }
+    
+    return cachedResponse.data;
+  }
+  
+  // If cache exists but is stale (and we haven't been asked to force refresh),
+  // trigger background refresh and return stale data
+  if (cachedResponse && !forceRefresh) {
+    console.debug(`Using stale cache for ${cacheKey} (${Math.round(cacheAge / 1000)}s old) while refreshing`);
+    
+    // Start refresh in background
     setTimeout(() => {
-      _refreshMessageCache(conversationId, page, size, before, cacheKey);
-    }, 100);
+      _refreshMessageCache(conversationId, page, batchSize, before, cacheKey);
+    }, 10);
     
-    return Promise.resolve(messageCache[cacheKey].data);
+    return cachedResponse.data;
   }
   
-  // Create a unique key for this request
-  const requestKey = cacheKey;
-  
-  // If there's an active request for the same data, queue this one
-  if (activeRequests[requestKey]) {
-    console.log(`Request already in progress: ${requestKey}, queuing...`);
-    
-    // Create a promise that will be resolved when the active request completes
-    return new Promise((resolve, reject) => {
-      // Initialize queue for this key if it doesn't exist
-      if (!requestQueue[requestKey]) {
-        requestQueue[requestKey] = [];
-      }
-      
-      // Add this request to the queue
-      requestQueue[requestKey].push({ resolve, reject });
-    });
-  }
-  
-  // Default to smaller page size for performance
-  const adjustedSize = Math.min(size, 50); // Increased from 20 to 50
-  
-  const params = { 
-    page, 
-    size: adjustedSize
-  };
-  
+  // Need to fetch fresh data - build request
+  console.debug(`Fetching fresh data for ${cacheKey}`);
+  const params = { page, size: batchSize };
   if (before) {
     params.before = before;
   }
   
-  // Mark this request as active
-  activeRequests[requestKey] = true;
-  
-  return api.get(`/conversations/${conversationId}/messages`, { params })
-    .then(response => {
-      // Cache the response for initial loads
-      if (page === 0) {
-        messageCache[cacheKey] = {
-          data: response,
-          timestamp: Date.now()
-        };
-      }
-      
-      // Process the request queue for this key
-      if (requestQueue[requestKey] && requestQueue[requestKey].length > 0) {
-        // Resolve all queued requests with the same response
-        requestQueue[requestKey].forEach(queued => {
-          queued.resolve({ ...response });
-        });
-        
-        // Clear the queue
-        delete requestQueue[requestKey];
-      }
-      
-      // Clear the active request flag
-      delete activeRequests[requestKey];
-      
-      return response;
-    })
-    .catch(error => {
-      // If there are queued requests, reject them all with the same error
-      if (requestQueue[requestKey] && requestQueue[requestKey].length > 0) {
-        requestQueue[requestKey].forEach(queued => {
-          queued.reject(error);
-        });
-        
-        // Clear the queue
-        delete requestQueue[requestKey];
-      }
-      
-      // Clear the active request flag
-      delete activeRequests[requestKey];
-      
-      return Promise.reject(error);
+  try {
+    // Create the request with timeout
+    const request = api.get(`/conversations/${conversationId}/messages`, {
+      params,
+      timeout: timeoutMs
     });
+    
+    // Store the promise to deduplicate requests
+    activeRequests[cacheKey] = request;
+    
+    // Wait for response
+    const response = await request;
+    
+    // Update cache
+    messageCache[cacheKey] = {
+      data: response,
+      timestamp: now
+    };
+    
+    return response;
+  } catch (error) {
+    // Handle errors - try to use cached data if available
+    if (cachedResponse) {
+      console.warn(`Error fetching ${cacheKey}, falling back to cached data:`, error.message || error);
+      return cachedResponse.data;
+    }
+    
+    // No cached data to fall back to
+    if (error.code === 'ECONNABORTED') {
+      throw new Error(`Request timeout (${timeoutMs}ms) getting messages for ${conversationId}`);
+    } else if (error.message?.includes('Network Error')) {
+      throw new Error(`Network error getting messages for ${conversationId}. Please check your connection.`);
+    }
+    
+    // Rethrow other errors
+    throw error;
+  } finally {
+    // Clean up
+    delete activeRequests[cacheKey];
+  }
 };
 
 // Clear message cache for a conversation when a new message is sent
@@ -359,32 +392,70 @@ export const markMessageAsRead = (messageId) =>
 export const updateUserConversationSettings = (conversationId, settings) =>
   api.put(`/user-conversations/${conversationId}`, settings);
 
-// Helper function to refresh message cache in the background
-const _refreshMessageCache = (conversationId, page, size, before, cacheKey) => {
-  const adjustedSize = Math.min(size, 50);
+/**
+ * Background refresh of message cache
+ * @private
+ */
+async function _refreshMessageCache(conversationId, page, size, before, cacheKey) {
+  // Skip refresh if we're offline
+  if (navigator.onLine === false) {
+    console.debug(`Skipping refresh for ${cacheKey} - offline`);
+    return;
+  }
   
-  const params = { 
-    page, 
-    size: adjustedSize
-  };
+  // Skip if already being refreshed
+  if (activeRequests[cacheKey]) {
+    console.debug(`Skipping duplicate refresh for ${cacheKey}`);
+    return;
+  }
   
+  // Determine if this is a group chat
+  const isGroupChat = typeof conversationId === 'string' && conversationId.startsWith('group_');
+  
+  // Set appropriate batch size and timeout based on conversation type
+  const batchSize = isGroupChat ? 30 : 40; // Smaller batch for group chats
+  const timeoutMs = isGroupChat ? 8000 : 12000; // Shorter timeout for group chats
+  
+  // Set up request parameters
+  const params = { page, size: batchSize };
   if (before) {
     params.before = before;
   }
   
-  api.get(`/conversations/${conversationId}/messages`, { params })
-    .then(response => {
-      // Update cache with fresh data
-      messageCache[cacheKey] = {
-        data: response,
-        timestamp: Date.now()
-      };
-      console.log('Message cache refreshed in background for:', cacheKey);
-    })
-    .catch(error => {
-      console.warn('Failed to refresh message cache in background:', error);
-    });
-};
+  // Create the request
+  const request = api.get(`/conversations/${conversationId}/messages`, {
+    params,
+    timeout: timeoutMs
+  });
+  
+  // Track this request to prevent duplicates
+  activeRequests[cacheKey] = request;
+  
+  try {
+    console.debug(`Background refreshing ${cacheKey}`);
+    const response = await request;
+    
+    // Update cache with fresh data
+    messageCache[cacheKey] = {
+      data: response,
+      timestamp: Date.now()
+    };
+    
+    console.debug(`Successfully refreshed cache for ${cacheKey}`);
+  } catch (error) {
+    // Don't throw for background refreshes, just log the error
+    if (error.code === 'ECONNABORTED') {
+      console.warn(`Background refresh timeout (${timeoutMs}ms) for ${cacheKey}`);
+    } else if (error.message && error.message.includes('Network Error')) {
+      console.warn(`Network error during background refresh for ${cacheKey}`);
+    } else {
+      console.warn(`Error during background refresh for ${cacheKey}:`, error.message || error);
+    }
+  } finally {
+    // Always clean up
+    delete activeRequests[cacheKey];
+  }
+}
 
 // Mark conversation as read
 export const markConversationAsRead = async (conversationId, userId, retryCount = 0) => {
