@@ -5,21 +5,18 @@ import com.rushan.todos.demo.dto.ConversationResponse;
 import com.rushan.todos.demo.dto.PaginatedResponse;
 import com.rushan.todos.demo.dto.UserProfileResponse;
 import com.rushan.todos.demo.entity.Conversation;
-import com.rushan.todos.demo.entity.LastMessage;
+
 import com.rushan.todos.demo.entity.user.User;
 import com.rushan.todos.demo.exception.ConversationNotFoundException;
 import com.rushan.todos.demo.repository.ConversationRepository;
 import com.rushan.todos.demo.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
+
 import java.util.stream.Collectors;
 
 @Service
@@ -66,8 +63,7 @@ public class ConversationService {
     }
     
     public PaginatedResponse<Conversation> getUserConversations(String userId, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("updatedAt").descending());
-        
+
         // Since MongoDB repository doesn't directly support pagination with complex queries,
         // we'll get all matching conversations and manually paginate
         List<Conversation> allConversations = conversationRepository.findByParticipantsContaining(userId);

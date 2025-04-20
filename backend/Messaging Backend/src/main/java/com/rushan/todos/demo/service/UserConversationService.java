@@ -2,7 +2,7 @@ package com.rushan.todos.demo.service;
 
 import com.rushan.todos.demo.dto.UserConversationDto;
 import com.rushan.todos.demo.entity.UserConversation;
-import com.rushan.todos.demo.repository.MessageRepository;
+
 import com.rushan.todos.demo.repository.UserConversationRepository;
 import com.rushan.todos.demo.websocket.WebSocketMessageService;
 import org.slf4j.Logger;
@@ -20,8 +20,6 @@ public class UserConversationService {
     @Autowired
     private UserConversationRepository userConversationRepository;
     
-    @Autowired
-    private MessageRepository messageRepository;
     
     @Autowired
     private WebSocketMessageService webSocketMessageService;

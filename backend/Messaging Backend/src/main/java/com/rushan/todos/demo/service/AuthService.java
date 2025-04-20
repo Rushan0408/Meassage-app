@@ -4,7 +4,7 @@ import com.rushan.todos.demo.config.JwtService;
 import com.rushan.todos.demo.dto.AuthRequest;
 import com.rushan.todos.demo.dto.AuthResponse;
 import com.rushan.todos.demo.dto.RegisterRequest;
-import com.rushan.todos.demo.entity.user.Role;
+
 import com.rushan.todos.demo.entity.user.User;
 import com.rushan.todos.demo.exception.AuthException;
 import com.rushan.todos.demo.exception.UserNotFoundException;
@@ -19,7 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
-import java.util.Optional;
+
 
 @Service
 public class AuthService {

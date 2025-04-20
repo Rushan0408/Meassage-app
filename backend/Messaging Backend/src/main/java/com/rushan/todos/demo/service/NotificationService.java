@@ -3,7 +3,7 @@ package com.rushan.todos.demo.service;
 import com.rushan.todos.demo.dto.NotificationDto;
 import com.rushan.todos.demo.dto.PaginatedResponse;
 import com.rushan.todos.demo.entity.Notification;
-import com.rushan.todos.demo.entity.user.User;
+
 import com.rushan.todos.demo.repository.NotificationRepository;
 import com.rushan.todos.demo.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;

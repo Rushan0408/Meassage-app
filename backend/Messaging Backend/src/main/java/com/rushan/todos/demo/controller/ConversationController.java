@@ -3,7 +3,6 @@ package com.rushan.todos.demo.controller;
 import com.rushan.todos.demo.dto.ConversationRequest;
 import com.rushan.todos.demo.dto.ConversationResponse;
 import com.rushan.todos.demo.dto.PaginatedResponse;
-import com.rushan.todos.demo.entity.Conversation;
 import com.rushan.todos.demo.exception.ConversationNotFoundException;
 import com.rushan.todos.demo.service.ConversationService;
 import org.springframework.beans.factory.annotation.Autowired;
