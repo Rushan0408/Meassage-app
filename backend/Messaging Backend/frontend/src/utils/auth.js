@@ -51,23 +51,36 @@ export const isTokenExpired = (expiryTimeInMinutes = 60) => {
 export const refreshToken = async () => {
   try {
     const refreshToken = localStorage.getItem('refreshToken');
+    console.log('Attempting to refresh token, refresh token exists:', !!refreshToken);
+    
     if (!refreshToken) {
-      throw new Error('No refresh token available');
+      console.log('No refresh token available');
+      return false;
     }
     
     const response = await api.post('/auth/refresh-token', { refreshToken });
+    console.log('Refresh token response:', response);
+    
     const { token } = response.data;
     
     if (token) {
       // Update only the token and timestamp
       localStorage.setItem('token', token);
       localStorage.setItem('tokenTimestamp', Date.now().toString());
+      console.log('Token refreshed successfully');
       return true;
     }
     
+    console.log('Token refresh failed - no token in response');
     return false;
   } catch (error) {
     console.error('Failed to refresh token:', error);
+    
+    if (error.response) {
+      console.error('Refresh token error status:', error.response.status);
+      console.error('Refresh token error data:', error.response.data);
+    }
+    
     return false;
   }
 }; 

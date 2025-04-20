@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getConversationById, markConversationAsRead } from '../services/api';
+import { getConversationById, markConversationAsRead, getMessages } from '../services/api';
+import api from '../services/api';
 import { getAuthData } from '../utils/auth';
 import ConversationHeader from '../components/ConversationHeader';
 import MessageList from '../components/MessageList';
@@ -12,104 +13,125 @@ const ConversationPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [conversation, setConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [typingUsers, setTypingUsers] = useState([]);
   const { userId } = getAuthData();
   const typingTimeoutRef = useRef(null);
   const subscriptionRef = useRef(null);
+  const initialLoadDoneRef = useRef(false);
 
   useEffect(() => {
-    const fetchConversation = async () => {
+    if (!id || !userId) {
+      setLoading(false);
+      return;
+    }
+    
+    // Don't attempt to load a conversation if id is just 'new'
+    if (id === 'new') {
+      setLoading(false);
+      return;
+    }
+    
+    const loadData = async () => {
       try {
         setLoading(true);
         setError('');
         
-        if (!id || !userId) {
-          setError('Invalid parameters');
-          setLoading(false);
-          return;
+        // Get conversation details
+        const convoResponse = await getConversationById(id);
+        const convoData = convoResponse.data;
+        
+        setConversation(convoData);
+        
+        // Load initial messages with a larger page size for better initial view
+        const msgResponse = await getMessages(id, 0, 75);
+        
+        // Ensure proper handling of different API response formats
+        let msgData = [];
+        if (msgResponse.data && Array.isArray(msgResponse.data)) {
+          msgData = msgResponse.data;
+        } else if (msgResponse.data && msgResponse.data.content && Array.isArray(msgResponse.data.content)) {
+          msgData = msgResponse.data.content;
+        } else if (msgResponse.data) {
+          console.warn('Unexpected message response format:', msgResponse.data);
         }
         
-        // Special case for 'new' - redirect to create conversation page
-        if (id === 'new') {
-          navigate('/conversations/create');
-          return;
-        }
+        setMessages(msgData);
         
-        const response = await getConversationById(id);
-        setConversation(response.data);
-        
-        // Mark conversation as read when viewing
+        // Mark conversation as read with better error handling
         try {
-          console.log('Attempting to mark conversation as read:', {
-            conversationId: id,
-            userId: userId,
-            userIdType: typeof userId
-          });
-          
           await markConversationAsRead(id, userId);
-          console.log('Successfully marked conversation as read');
-        } catch (markReadError) {
-          // Log the error but don't fail the entire operation
-          console.warn('Failed to mark conversation as read:', markReadError);
+        } catch (readError) {
+          console.error('Failed to mark conversation as read:', readError);
           
-          if (markReadError.response) {
-            console.warn('Error response data:', markReadError.response.data);
+          // Try alternative approach if first method fails
+          if (readError.response && readError.response.status === 400) {
+            // Wait a moment and try again with a different approach
+            setTimeout(async () => {
+              try {
+                // Try sending as direct JSON string if structured object failed
+                const response = await api.put(`/user-conversations/${id}/read`, 
+                  JSON.stringify({ userId }), 
+                  { headers: { 'Content-Type': 'application/json' } }
+                );
+                console.log('Marked conversation as read with alternative method');
+              } catch (retryError) {
+                console.error('Second attempt to mark conversation as read failed:', retryError);
+              }
+            }, 500);
           }
-          
-          // Try again with a slight delay as a fallback
-          setTimeout(async () => {
-            try {
-              await markConversationAsRead(id, typeof userId === 'string' ? userId : userId?.userId);
-              console.log('Successfully marked conversation as read on second attempt');
-            } catch (retryError) {
-              console.warn('Failed to mark conversation as read on retry:', retryError);
-            }
-          }, 1500);
         }
         
-      } catch (err) {
-        console.error('Error fetching conversation:', err);
+        initialLoadDoneRef.current = true;
+      } catch (error) {
+        console.error('Error loading conversation data:', error);
         
-        // Check if response is available
-        if (err.response) {
-          // Handle specific status codes
-          if (err.response.status === 404) {
-            setError('Conversation not found. It may have been deleted or you might not have access to it.');
-          } else if (err.response.status === 500) {
-            setError('Server error. Please try again later.');
-          } else {
-            setError(`Failed to load conversation: ${err.response?.data?.message || 'Unknown error'}`);
-          }
-        } else if (err.request) {
-          // Request was made but no response
-          setError('Network error. Please check your connection.');
+        if (error.response && error.response.status === 404) {
+          setError('Conversation not found');
         } else {
-          // Something else happened
-          setError('Failed to load conversation. Please try again.');
+          setError('Failed to load conversation data. Please try again.');
         }
       } finally {
         setLoading(false);
       }
     };
-
-    fetchConversation();
-  }, [id, userId, navigate]);
+    
+    loadData();
+  }, [id, userId]);
 
   // Set up WebSocket subscription for real-time updates
   useEffect(() => {
     if (!id || !userId) return;
 
-    // WebSocket message handler
+    // WebSocket message handler - directly update UI without unnecessary API calls
     const handleWebSocketMessage = (message) => {
-      console.log('WebSocket message received:', message);
-      
       if (message.type === 'MESSAGE') {
-        // New message received - update conversation
-        getConversationById(id)
-          .then(response => setConversation(response.data))
-          .catch(error => console.error('Failed to update conversation:', error));
+        // Directly add the new message to the messages state
+        const newMessage = message.message;
+        setMessages(prevMessages => {
+          // Check if message already exists to prevent duplicates
+          if (prevMessages.some(msg => msg.id === newMessage.id)) {
+            return prevMessages.map(msg => 
+              msg.id === newMessage.id ? newMessage : msg
+            );
+          }
+          // Add new message and sort by timestamp
+          return [...prevMessages, newMessage].sort((a, b) => 
+            new Date(a.timestamp) - new Date(b.timestamp)
+          );
+        });
+        
+        // Update conversation metadata
+        setConversation(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            lastMessage: newMessage,
+            lastActivity: newMessage.timestamp
+          };
+        });
       } 
       else if (message.type === 'TYPING') {
         // Typing indicator
@@ -123,8 +145,14 @@ const ConversationPage = () => {
           }
         }
       }
+      else if (message.type === 'DELETE') {
+        // Remove deleted message
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.id !== message.messageId)
+        );
+      }
       else if (message.type === 'CONVERSATION_UPDATE') {
-        // Conversation was updated (settings changed, etc.)
+        // Only fetch conversation data for metadata updates
         getConversationById(id)
           .then(response => setConversation(response.data))
           .catch(error => console.error('Failed to update conversation:', error));
@@ -149,7 +177,7 @@ const ConversationPage = () => {
     };
   }, [id, userId]);
 
-  const handleMessageSent = () => {
+  const handleMessageSent = (newMessage) => {
     // Stop typing indicator
     sendTypingStatus(id, false);
     
@@ -158,10 +186,30 @@ const ConversationPage = () => {
       typingTimeoutRef.current = null;
     }
     
-    // Refresh conversation to show latest messages
-    getConversationById(id)
-      .then(response => setConversation(response.data))
-      .catch(error => console.error('Failed to update conversation:', error));
+    // Directly update messages in state instead of refetching
+    if (newMessage) {
+      setMessages(prevMessages => {
+        // Check if message already exists
+        if (prevMessages.some(msg => msg.id === newMessage.id)) {
+          return prevMessages.map(msg => 
+            msg.id === newMessage.id ? newMessage : msg
+          );
+        }
+        return [...prevMessages, newMessage].sort((a, b) => 
+          new Date(a.timestamp) - new Date(b.timestamp)
+        );
+      });
+      
+      // Update conversation metadata
+      setConversation(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          lastMessage: newMessage,
+          lastActivity: newMessage.timestamp
+        };
+      });
+    }
   };
 
   const handleTyping = () => {
@@ -205,24 +253,26 @@ const ConversationPage = () => {
     } else if (typingUserNames.length === 2) {
       return `${typingUserNames[0]} and ${typingUserNames[1]} are typing...`;
     } else {
-      return 'Several people are typing...';
+      return `${typingUserNames.length} people are typing...`;
     }
   };
 
   return (
-    <div className="conversation-page">
-      <ConversationHeader conversation={conversation} />
-      <MessageList conversationId={id} />
+    <div className="conversation-container">
+      <ConversationHeader 
+        conversation={conversation} 
+        typingIndicator={getTypingIndicator()} 
+      />
       
-      {typingUsers.length > 0 && (
-        <div className="typing-indicator">
-          {getTypingIndicator()}
-        </div>
-      )}
+      <MessageList 
+        conversationId={id} 
+        initialMessages={messages}
+        onMessagesLoaded={setMessages}
+      />
       
       <MessageInput 
         conversationId={id} 
-        onMessageSent={handleMessageSent}
+        onMessageSent={handleMessageSent} 
         onTyping={handleTyping}
       />
     </div>

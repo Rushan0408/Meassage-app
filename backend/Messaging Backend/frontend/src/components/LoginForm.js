@@ -16,18 +16,59 @@ const LoginForm = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
+      console.log('Login form submitting with email:', email);
       const response = await login(email, password);
-      const { token, userId } = response.data;
+      
+      console.log('Login response:', response);
+      
+      if (!response || !response.data) {
+        throw new Error('Invalid response from server');
+      }
+      
+      // Check for expected response data structure
+      const { token, userId, refreshToken } = response.data;
+      
+      if (!token || !userId) {
+        throw new Error('Authentication failed: Missing token or user ID');
+      }
       
       // Save authentication data
-      setAuthData(token, userId);
+      setAuthData(token, userId, refreshToken);
       
       // Notify parent component
       if (onLoginSuccess) {
         onLoginSuccess();
       }
     } catch (error) {
-      setError(error.response?.data?.message || 'Login failed. Please try again.');
+      console.error('Login error:', error);
+      
+      // Log more details about the error for debugging
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+        console.error('Error response headers:', error.response.headers);
+      }
+      
+      // Handle different error scenarios
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        if (error.response.status === 401) {
+          setError('Invalid email or password. Please try again.');
+        } else if (error.response.status === 403) {
+          setError('Access forbidden. Your account may be locked.');
+        } else if (error.response.status === 429) {
+          setError('Too many login attempts. Please try again later.');
+        } else {
+          setError(error.response.data?.message || 'Login failed. Please try again.');
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        setError('Network error. Please check your connection and try again.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        setError('An error occurred during login. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

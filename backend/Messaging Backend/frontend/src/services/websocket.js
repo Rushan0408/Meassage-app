@@ -7,11 +7,11 @@ let stompClient = null;
 let isConnected = false;
 let subscriptions = {};
 let reconnectTimer = null;
-const reconnectInterval = 5000; // 5 seconds
+const reconnectInterval = 2000; // Reduced from 5000ms to 2000ms for faster reconnection
 let connectionAttempts = 0;
-const maxReconnectAttempts = 5; // Maximum number of reconnect attempts
+const maxReconnectAttempts = 10; // Increased from 5 to 10 for more reconnect attempts
 let heartbeatTimer = null;
-const heartbeatInterval = 30000; // 30 seconds
+const heartbeatInterval = 30000; // Reduced from 60000ms to improve connection monitoring
 
 // Event callbacks
 const callbacks = {
@@ -95,10 +95,8 @@ export const connect = (onConnected, onError) => {
       try {
         // Use sockJS for transport for first attempt, raw WebSocket for second
         if (connectionAttempts % 2 === 0) {
-          console.log('Attempting SockJS connection...');
           stompClient.webSocketFactory = () => new SockJS('http://localhost:8080/ws/connect');
         } else {
-          console.log('Attempting raw WebSocket connection...');
           stompClient.webSocketFactory = () => new WebSocket('ws://localhost:8080/ws/connect');
         }
         
@@ -113,9 +111,9 @@ export const connect = (onConnected, onError) => {
         // Configure reconnect - disabled as we handle it manually
         stompClient.reconnectDelay = 0;
         
-        // Configure heartbeat
-        stompClient.heartbeatIncoming = 10000;
-        stompClient.heartbeatOutgoing = 10000;
+        // Configure heartbeat with longer intervals to reduce overhead
+        stompClient.heartbeatIncoming = 30000; // 30 seconds
+        stompClient.heartbeatOutgoing = 30000; // 30 seconds
         
         stompClient.activate();
       } catch (err) {
@@ -133,11 +131,10 @@ export const connect = (onConnected, onError) => {
     
     // Set up event handlers
     stompClient.onConnect = (frame) => {
-      console.log('Connected to WebSocket server');
       isConnected = true;
       connectionAttempts = 0; // Reset after successful connection
       
-      // Start the heartbeat check
+      // Start the heartbeat check with reduced frequency
       startHeartbeat();
       
       // Resubscribe to previous subscriptions after reconnect

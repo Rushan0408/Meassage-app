@@ -52,15 +52,13 @@ const MessageInput = ({ conversationId, onMessageSent, onTyping }) => {
         attachments: attachments
       };
       
-      console.log("Sending message:", messageData);
       const response = await sendMessage(conversationId, messageData);
-      console.log("Message sent successfully:", response.data);
       
       // Clear form
       setMessage('');
       setAttachments([]);
       
-      // Notify parent component
+      // Notify parent component with the message object
       if (onMessageSent) {
         onMessageSent(response.data);
       }

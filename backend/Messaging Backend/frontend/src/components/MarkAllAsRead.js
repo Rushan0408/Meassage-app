@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { markConversationAsRead } from '../services/api';
+import { markAllMessagesAsRead } from '../services/api';
 import { getAuthData } from '../utils/auth';
 import { Button } from './ui/button';
+import { showToast } from './ui/ToastPortal';
 
 const MarkAllAsRead = ({ conversationId, onSuccess }) => {
   const [loading, setLoading] = useState(false);
@@ -10,66 +11,82 @@ const MarkAllAsRead = ({ conversationId, onSuccess }) => {
 
   const handleMarkAllAsRead = async () => {
     if (!conversationId || !userId) {
-      console.warn('Missing required parameters', { conversationId, userId });
+      showToast('Unable to mark messages as read: Missing parameters', 'error');
       return;
     }
-    
-    setError(false);
-    
+
     try {
       setLoading(true);
-      console.log('Marking all as read with params:', {
-        conversationId, 
-        userId: typeof userId === 'object' ? userId.userId : userId
-      });
+      setError(false);
       
-      // Just pass userId as string instead of object to avoid issues
-      await markConversationAsRead(conversationId, typeof userId === 'string' ? userId : userId?.userId);
+      await markAllMessagesAsRead(conversationId, userId);
       
+      // Call success callback to update UI state
       if (onSuccess) {
         onSuccess();
       }
-    } catch (error) {
-      console.error('Failed to mark conversation as read:', error);
-      if (error.response) {
-        console.error('Error details:', error.response.data);
-      }
+      
+      showToast('All messages marked as read', 'success');
+    } catch (err) {
+      console.error('Failed to mark messages as read:', err);
       setError(true);
       
-      // Try one more time with a delay
-      setTimeout(async () => {
-        try {
-          await markConversationAsRead(conversationId, typeof userId === 'string' ? userId : userId?.userId);
-          setError(false);
-          if (onSuccess) {
-            onSuccess();
-          }
-        } catch (retryError) {
-          console.error('Retry failed:', retryError);
+      // More detailed error message based on error type
+      let errorMsg = 'Failed to mark messages as read';
+      if (err.response) {
+        if (err.response.status === 400) {
+          errorMsg += ': Invalid request format';
+        } else if (err.response.status === 401) {
+          errorMsg += ': Authentication required';
+        } else if (err.response.status === 403) {
+          errorMsg += ': Not authorized';
+        } else if (err.response.status === 404) {
+          errorMsg += ': Conversation not found';
+        } else if (err.response.status >= 500) {
+          errorMsg += ': Server error';
         }
-      }, 1000);
+      } else if (err.request) {
+        errorMsg += ': Network error';
+      }
+      
+      showToast(errorMsg, 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleRetry = () => {
+    handleMarkAllAsRead();
+  };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-between bg-red-50 p-2 rounded text-sm">
+        <span className="text-red-600">Failed to mark messages as read. Click to retry.</span>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleRetry}
+          disabled={loading}
+          className="text-xs py-1 px-2"
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className={`w-full ${error ? 'space-y-2' : ''}`}>
-      <Button
-        variant={error ? "destructive" : "outline"}
-        size="sm"
-        disabled={loading}
+    <div className="flex items-center justify-center">
+      <Button 
+        variant="ghost" 
+        size="sm" 
         onClick={handleMarkAllAsRead}
-        className="w-full"
+        disabled={loading}
+        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
       >
-        {loading ? 'Marking...' : error ? 'Retry Mark All as Read' : 'Mark All as Read'}
+        {loading ? 'Marking as read...' : 'Mark all as read'}
       </Button>
-      
-      {error && (
-        <div className="text-xs text-destructive text-center">
-          Failed to mark messages as read. Click to retry.
-        </div>
-      )}
     </div>
   );
 };

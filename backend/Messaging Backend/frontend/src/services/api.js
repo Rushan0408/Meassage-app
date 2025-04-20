@@ -8,8 +8,10 @@ const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json'
   },
   timeout: 15000, // 15 second timeout
+  withCredentials: true // Include cookies in cross-origin requests
 });
 
 // Simple request throttling
@@ -28,8 +30,13 @@ api.interceptors.request.use(
     }
     lastRequestTime = Date.now();
     
+    // Skip token check for auth endpoints
+    if (config.url === '/auth/login' || config.url === '/auth/register' || config.url === '/auth/refresh-token') {
+      return config;
+    }
+    
     // Check if token is expired, and refresh if needed
-    if (isTokenExpired() && config.url !== '/auth/login' && config.url !== '/auth/refresh-token') {
+    if (isTokenExpired()) {
       const refreshSuccess = await refreshToken();
       if (!refreshSuccess) {
         // Clear auth data if token can't be refreshed
@@ -61,6 +68,13 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
+    
+    // Skip auth related errors for login/register endpoints
+    if (originalRequest && (
+        originalRequest.url === '/auth/login' || 
+        originalRequest.url === '/auth/register')) {
+      return Promise.reject(error);
+    }
     
     // Implement retry logic for network errors and 5xx errors
     if ((error.code === 'ERR_NETWORK' || 
@@ -107,11 +121,26 @@ api.interceptors.response.use(
 );
 
 // Auth API
-export const login = (email, password) => 
-  api.post('/auth/login', { email, password });
+export const login = (email, password) => {
+  // Try to log request details to help debug
+  console.log('Attempting login with:', { email, password: '***' });
+  
+  return api.post('/auth/login', { email, password }, {
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    // Try without withCredentials first as it might be causing CORS issues
+    withCredentials: false
+  });
+}
 
 export const register = (userData) => 
-  api.post('/auth/register', userData);
+  api.post('/auth/register', userData, {
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    withCredentials: false
+  });
 
 export const getCurrentUser = () => 
   api.get('/auth/me');
@@ -187,10 +216,26 @@ export const deleteConversation = (conversationId, userId) =>
 // Request debouncing - track conversation requests to prevent overloading
 const activeRequests = {};
 const requestQueue = {};
+const messageCache = {}; // Simple cache for messages
+
+// Cache expiration timeout (2 minutes, reduced from 5)
+const CACHE_EXPIRATION = 2 * 60 * 1000;
 
 export const getMessages = (conversationId, page = 0, size = 20, before = null) => {
+  // Check cache first for initial loads (page 0)
+  const cacheKey = `${conversationId}_${page}_${before || 'latest'}`;
+  if (page === 0 && messageCache[cacheKey] && (Date.now() - messageCache[cacheKey].timestamp < CACHE_EXPIRATION)) {
+    // For page 0, still make the request in the background to update the cache
+    // but return cached data immediately for better responsiveness
+    setTimeout(() => {
+      _refreshMessageCache(conversationId, page, size, before, cacheKey);
+    }, 100);
+    
+    return Promise.resolve(messageCache[cacheKey].data);
+  }
+  
   // Create a unique key for this request
-  const requestKey = `${conversationId}_${page}_${before || 'latest'}`;
+  const requestKey = cacheKey;
   
   // If there's an active request for the same data, queue this one
   if (activeRequests[requestKey]) {
@@ -209,7 +254,7 @@ export const getMessages = (conversationId, page = 0, size = 20, before = null) 
   }
   
   // Default to smaller page size for performance
-  const adjustedSize = Math.min(size, 20);
+  const adjustedSize = Math.min(size, 50); // Increased from 20 to 50
   
   const params = { 
     page, 
@@ -225,6 +270,14 @@ export const getMessages = (conversationId, page = 0, size = 20, before = null) 
   
   return api.get(`/conversations/${conversationId}/messages`, { params })
     .then(response => {
+      // Cache the response for initial loads
+      if (page === 0) {
+        messageCache[cacheKey] = {
+          data: response,
+          timestamp: Date.now()
+        };
+      }
+      
       // Process the request queue for this key
       if (requestQueue[requestKey] && requestQueue[requestKey].length > 0) {
         // Resolve all queued requests with the same response
@@ -255,21 +308,40 @@ export const getMessages = (conversationId, page = 0, size = 20, before = null) 
       // Clear the active request flag
       delete activeRequests[requestKey];
       
-      throw error;
+      return Promise.reject(error);
     });
+};
+
+// Clear message cache for a conversation when a new message is sent
+const clearConversationCache = (conversationId) => {
+  // Remove all cache entries for this conversation
+  Object.keys(messageCache).forEach(key => {
+    if (key.startsWith(`${conversationId}_`)) {
+      delete messageCache[key];
+    }
+  });
 };
 
 export const sendMessage = async (conversationId, messageData, retryCount = 0) => {
   try {
-    return await api.post(`/conversations/${conversationId}/messages`, messageData);
+    const response = await api.post(`/conversations/${conversationId}/messages`, messageData);
+    // Clear cache for this conversation
+    clearConversationCache(conversationId);
+    return response;
   } catch (error) {
-    // For network errors, retry up to 2 times
-    if (error.code === 'ERR_NETWORK' && retryCount < 2) {
+    if ((error.code === 'ERR_NETWORK' || 
+        (error.response && error.response.status >= 500)) && 
+        retryCount < 2) {
+      
       console.log(`Retrying sendMessage (${retryCount + 1}/2)...`);
-      // Wait a bit before retrying
+      
+      // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+      
+      // Retry
       return sendMessage(conversationId, messageData, retryCount + 1);
     }
+    
     throw error;
   }
 };
@@ -287,6 +359,34 @@ export const markMessageAsRead = (messageId) =>
 export const updateUserConversationSettings = (conversationId, settings) =>
   api.put(`/user-conversations/${conversationId}`, settings);
 
+// Helper function to refresh message cache in the background
+const _refreshMessageCache = (conversationId, page, size, before, cacheKey) => {
+  const adjustedSize = Math.min(size, 50);
+  
+  const params = { 
+    page, 
+    size: adjustedSize
+  };
+  
+  if (before) {
+    params.before = before;
+  }
+  
+  api.get(`/conversations/${conversationId}/messages`, { params })
+    .then(response => {
+      // Update cache with fresh data
+      messageCache[cacheKey] = {
+        data: response,
+        timestamp: Date.now()
+      };
+      console.log('Message cache refreshed in background for:', cacheKey);
+    })
+    .catch(error => {
+      console.warn('Failed to refresh message cache in background:', error);
+    });
+};
+
+// Mark conversation as read
 export const markConversationAsRead = async (conversationId, userId, retryCount = 0) => {
   try {
     // Handle both object format (like {userId: 'abc123'}) and string format
@@ -298,7 +398,7 @@ export const markConversationAsRead = async (conversationId, userId, retryCount 
       return Promise.reject(new Error('Invalid parameters: conversationId and userId are required'));
     }
     
-    // Try sending a request body instead of query parameter to avoid encoding issues
+    // Send userId in request body instead of query parameter
     return await api.put(`/user-conversations/${conversationId}/read`, { userId: userIdValue });
   } catch (error) {
     // Log the error
@@ -332,7 +432,7 @@ export const markAllMessagesAsRead = async (conversationId, userId, retryCount =
       return Promise.reject(new Error('Invalid parameters: conversationId and userId are required'));
     }
     
-    // Use request body instead of query parameter for consistency
+    // Send userId in request body instead of query parameter
     return await api.put(`/messages/mark-all-read/${conversationId}`, { userId: userIdValue });
   } catch (error) {
     // Log the error

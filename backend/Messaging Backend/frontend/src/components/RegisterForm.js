@@ -30,17 +30,56 @@ const RegisterForm = ({ onRegisterSuccess }) => {
 
     try {
       const response = await register(formData);
-      const { token, userId } = response.data;
+      
+      if (!response || !response.data) {
+        throw new Error('Invalid response from server');
+      }
+      
+      const { token, userId, refreshToken } = response.data;
+      
+      if (!token || !userId) {
+        throw new Error('Registration failed: Missing token or user ID');
+      }
       
       // Save authentication data
-      setAuthData(token, userId);
+      setAuthData(token, userId, refreshToken);
       
       // Notify parent component
       if (onRegisterSuccess) {
         onRegisterSuccess();
       }
     } catch (error) {
-      setError(error.response?.data?.message || 'Registration failed. Please try again.');
+      console.error('Registration error:', error);
+      
+      // Handle different error scenarios
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        if (error.response.status === 400) {
+          const errorData = error.response.data;
+          if (errorData?.errors && Object.keys(errorData.errors).length > 0) {
+            // Format validation errors
+            const errorMessages = Object.entries(errorData.errors)
+              .map(([field, message]) => `${field}: ${message}`)
+              .join(', ');
+            setError(`Validation error: ${errorMessages}`);
+          } else {
+            setError(errorData?.message || 'Invalid registration data. Please check your information.');
+          }
+        } else if (error.response.status === 409) {
+          setError('Email or username already exists. Please try different credentials.');
+        } else if (error.response.status === 403) {
+          setError('Registration is currently not allowed. Please try again later.');
+        } else {
+          setError(error.response.data?.message || 'Registration failed. Please try again.');
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        setError('Network error. Please check your connection and try again.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        setError('An error occurred during registration. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
