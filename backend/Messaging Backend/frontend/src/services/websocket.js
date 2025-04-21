@@ -89,8 +89,6 @@ export const connect = (onConnected, onError) => {
     stompClient = new Client();
     
     // Try using sockJS first, then fall back to raw WebSocket if needed
-    const maxAttempts = 2;
-    
     const attemptConnection = () => {
       try {
         // Use sockJS for transport for first attempt, raw WebSocket for second
@@ -423,7 +421,7 @@ export const sendBulkReadReceipt = (conversationId, messageIds) => {
   console.log(`Sent bulk read receipt for ${messageIds.length} messages in conversation ${conversationId}`);
 };
 
-export default {
+const websocketService = {
   connect,
   disconnect,
   subscribe,
@@ -440,4 +438,6 @@ export default {
   isWebSocketConnected,
   forceReconnect,
   sendBulkReadReceipt
-}; 
+};
+
+export default websocketService;

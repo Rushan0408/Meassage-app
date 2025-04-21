@@ -215,7 +215,6 @@ export const deleteConversation = (conversationId, userId) =>
 
 // Request debouncing - track conversation requests to prevent overloading
 const activeRequests = {};
-const requestQueue = {};
 const messageCache = {}; // Simple cache for messages
 
 // Cache configuration
@@ -462,18 +461,28 @@ export const markConversationAsRead = async (conversationId, userId, retryCount 
   try {
     // Handle both object format (like {userId: 'abc123'}) and string format
     const userIdValue = typeof userId === 'object' && userId !== null ? userId.userId : userId;
-    
-    // Validate parameters
-    if (!conversationId || !userIdValue) {
+
+    // Enhanced validation: userIdValue must be a non-empty string
+    if (!conversationId || typeof userIdValue !== 'string' || userIdValue.trim() === '') {
       console.warn('Invalid parameters for markConversationAsRead:', { conversationId, userIdValue });
-      return Promise.reject(new Error('Invalid parameters: conversationId and userId are required'));
+      return Promise.reject(new Error('Invalid parameters: conversationId and userId (non-empty string) are required'));
     }
+
+    // Log outgoing request for debugging
+    console.debug('Sending markConversationAsRead request:', {
+      url: `/user-conversations/${conversationId}/read`,
+      body: { userId: userIdValue }
+    });
     
     // Send userId in request body instead of query parameter
-    return await api.put(`/user-conversations/${conversationId}/read`, { userId: userIdValue });
+    const response = await api.put(`/user-conversations/${conversationId}/read`, { userId: userIdValue });
+    console.debug('Received response for markConversationAsRead:', response);
+    return response;
   } catch (error) {
     // Log the error
     console.error(`Error marking conversation as read (attempt ${retryCount + 1}):`, error);
+    console.error('Error response:', error.response);
+
     
     // For network errors or 500s, retry up to 2 times with exponential backoff
     if ((error.code === 'ERR_NETWORK' || 
