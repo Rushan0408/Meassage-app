@@ -46,22 +46,15 @@ public class UserConversationController {
     @PutMapping("/{conversationId}/read")
     public ResponseEntity<?> markConversationAsRead(
             @PathVariable String conversationId,
-            @RequestBody(required = false) Map<String, Object> request,
+            @RequestBody(required = false) com.rushan.todos.demo.dto.UserIdRequest request,
             @RequestParam(required = false) String userId) {
         
         try {
             // Get userId from either request body or request parameter
             String userIdToUse = userId;
-            
-            // If userId is not provided as a parameter, try to get it from the request body
+            // If userId is not provided as a parameter, try to get it from the request body DTO
             if (userIdToUse == null && request != null) {
-                Object userIdObj = request.get("userId");
-                if (userIdObj instanceof String) {
-                    userIdToUse = (String) userIdObj;
-                } else if (userIdObj != null) {
-                    // Try to convert to string if it's not already a string
-                    userIdToUse = String.valueOf(userIdObj);
-                }
+                userIdToUse = request.getUserId();
             }
             
             // Log the request for debugging

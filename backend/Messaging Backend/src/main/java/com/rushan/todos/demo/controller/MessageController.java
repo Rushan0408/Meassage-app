@@ -61,26 +61,17 @@ public class MessageController {
     @PutMapping("/messages/mark-all-read/{conversationId}")
     public ResponseEntity<List<MessageDto>> markAllMessagesAsRead(
             @PathVariable String conversationId,
-            @RequestParam String userId,
-            @RequestBody(required = false) Map<String, Object> request) {
+            @RequestBody(required = false) com.rushan.todos.demo.dto.UserIdRequest request) {
         
-        // Get userId from either request body or request parameter
-        String userIdToUse = userId;
-        
-        // If userId is provided in the request body and not as a parameter, use that
-        if ((userIdToUse == null || userIdToUse.isEmpty()) && request != null) {
-            Object userIdObj = request.get("userId");
-            if (userIdObj instanceof String) {
-                userIdToUse = (String) userIdObj;
-            } else if (userIdObj != null) {
-                userIdToUse = String.valueOf(userIdObj);
-            }
+        String userId = null;
+        if (request != null) {
+            userId = request.getUserId();
         }
         
-        if (userIdToUse == null || userIdToUse.isEmpty()) {
+        if (userId == null || userId.isEmpty()) {
             throw new IllegalArgumentException("userId is required");
         }
         
-        return ResponseEntity.ok(messageService.markAllMessagesAsReadInConversation(conversationId, userIdToUse));
+        return ResponseEntity.ok(messageService.markAllMessagesAsReadInConversation(conversationId, userId));
     }
 }

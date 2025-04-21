@@ -22,8 +22,8 @@ public class WebSocketController {
 
     @MessageMapping("/conversations/{conversationId}/typing")
     @SendTo("/topic/conversations/{conversationId}")
-    public String handleTypingIndicator(String typingStatus) {
-        return typingStatus;
+    public String handleTypingIndicator(@Payload com.rushan.todos.demo.dto.TypingIndicatorRequest typingRequest) {
+        return typingRequest.getStatus();
     }
 
     @MessageMapping("/conversations/{conversationId}/read")
@@ -38,8 +38,8 @@ public class WebSocketController {
 
     @MessageMapping("/notifications")
     @SendToUser("/queue/notifications")
-    public String handleNotification(String notification) {
-        return notification;
+    public String handleNotification(@Payload com.rushan.todos.demo.dto.NotificationRequest notification) {
+        return notification.getMessage();
     }
 
     @MessageMapping("/chat/{conversationId}/read")
